@@ -3,9 +3,6 @@
 import db from '../database/knex.cjs'; // Mengimpor koneksi database
 import moment from 'moment'; // Library untuk manipulasi tanggal
 import Try from '../../helpers/tryCatch'; // Helper untuk penanganan error
-import { Op } from 'sequelize'; // Jika menggunakan Sequelize untuk operasi database
-// Jika Anda menggunakan model, impor model-model yang diperlukan:
-import { Transaksi, Produk, User } from '../models'; // Pastikan ini sesuai dengan struktur model Anda
 
 // Fungsi utama untuk menentukan dashboard berdasarkan peran
 export const index = async (req, res) => {
@@ -32,14 +29,14 @@ export const index = async (req, res) => {
 // Fungsi dashboard untuk admin
 const adminDashboard = async (req, res) => {
   try {
-    const totalPenjualan = await db('transaksis').sum('total').where({ status: 'selesai' });
-    const totalProduk = await db('produks').count();
+    const totalPenjualan = await db('transaksi').sum('total').where({ status: 'selesai' });
+    const totalProduk = await db('produk').count();
     const totalPengguna = await db('users').count();
-    const totalTransaksi = await db('transaksis').count();
-    const transaksiTerbaru = await db('transaksis')
-      .select('*')
-      .join('users', 'transaksis.user_id', '=', 'users.id')
-      .orderBy('transaksis.created_at', 'DESC')
+    const totalTransaksi = await db('transaksi').count();
+    const transaksiTerbaru = await db('transaksi')
+      .select('transaksi.*', 'users.name', 'users.email')
+      .join('users', 'transaksi.user_id', '=', 'users.id')
+      .orderBy('transaksi.created_at', 'DESC')
       .limit(5);
 
     res.json({
@@ -58,19 +55,14 @@ const adminDashboard = async (req, res) => {
 // Fungsi dashboard untuk petugas
 const petugasDashboard = async (req, res) => {
   try {
-    const totalPenjualanHariIni = await db('transaksis').sum('total').where({
-      created_at: {
-        [Op.gte]: moment().startOf('day').toDate(),
-      },
-      status: 'selesai',
-    });
-    const produkTerlaris = await db('produks')
-      .select('produks.*')
-      .join('detail_transaksis', 'produks.id', '=', 'detail_transaksis.produk_id')
-      .groupBy('produks.id')
-      .orderByRaw('COUNT(detail_transaksis.id) DESC')
+    const totalPenjualanHariIni = await db('transaksi').sum('total').where('created_at', '>=', moment().startOf('day').toDate()).andWhere('status', 'selesai');
+    const produkTerlaris = await db('produk')
+      .select('produk.*')
+      .join('detail_transaksi', 'produk.id', '=', 'detail_transaksi.produk_id')
+      .groupBy('produk.id')
+      .orderByRaw('COUNT(detail_transaksi.id) DESC')
       .limit(5);
-    const stokMenipis = await db('produks').where('stok', '<=', 10);
+    const stokMenipis = await db('produk').where('stok', '<=', 10);
 
     res.json({
       totalPenjualanHariIni: totalPenjualanHariIni[0]['sum'] || 0,
@@ -86,11 +78,11 @@ const petugasDashboard = async (req, res) => {
 // Fungsi dashboard untuk pembeli
 const pembeliDashboard = async (req, res) => {
   try {
-    const transaksiTerbaru = await db('transaksis')
+    const transaksiTerbaru = await db('transaksi')
       .where({ user_id: req.user.id })
       .orderBy('created_at', 'DESC')
       .limit(5);
-    const produkTerbaru = await db('produks').orderBy('created_at', 'DESC').limit(6);
+    const produkTerbaru = await db('produk').orderBy('created_at', 'DESC').limit(6);
 
     res.json({
       transaksiTerbaru,

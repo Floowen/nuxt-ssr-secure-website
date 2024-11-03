@@ -1,40 +1,37 @@
 // transaksiController.js
 
-import { Transaksi, Produk, Ulasan, DetailTransaksi } from '../models'; // Pastikan ini mengarah ke model yang benar
+import db from '../database/knex.cjs'; // Mengimpor koneksi database
 import { validationResult } from 'express-validator';
-import { Op } from 'sequelize'; // Operator untuk pencarian
-import { Transaction } from 'sequelize'; // Untuk transaksi database
 
 // Fungsi untuk menampilkan semua transaksi
 export const index = async (req, res) => {
   try {
-    const query = {
-      include: ['user'],
-      where: {},
-      order: [['createdAt', 'DESC']],
-    };
+    const query = db('transaksi')
+      .leftJoin('users', 'transaksi.user_id', 'users.id')
+      .select('transaksi.*', 'users.name as user_name')
+      .orderBy('transaksi.created_at', 'DESC');
 
     if (req.query.search) {
       const searchTerm = req.query.search;
-      query.where[Op.or] = [
-        { id: { [Op.like]: `%${searchTerm}%` } },
-        { '$user.name$': { [Op.like]: `%${searchTerm}%` } },
-      ];
+      query.where(function() {
+        this.where('transaksi.id', 'like', `%${searchTerm}%`)
+          .orWhere('users.name', 'like', `%${searchTerm}%`);
+      });
     }
 
     if (req.query.status) {
-      query.where.status = req.query.status;
+      query.where('transaksi.status', req.query.status);
     }
 
     if (req.query.date_from) {
-      query.where.createdAt = { [Op.gte]: req.query.date_from };
+      query.where('transaksi.created_at', '>=', req.query.date_from);
     }
 
     if (req.query.date_to) {
-      query.where.createdAt = { [Op.lte]: req.query.date_to };
+      query.where('transaksi.created_at', '<=', req.query.date_to);
     }
 
-    const transaksis = await Transaksi.findAll(query);
+    const transaksis = await query;
     res.json(transaksis);
   } catch (error) {
     console.error(error); // Log error untuk debugging
@@ -45,10 +42,13 @@ export const index = async (req, res) => {
 // Fungsi untuk menampilkan detail transaksi
 export const show = async (req, res) => {
   try {
-    const transaksi = await Transaksi.findByPk(req.params.id, {
-      include: ['detailTransaksis.produk', 'ulasan', 'user'],
-    });
-    if (!transaksi) {
+    const transaksi = await db('transaksi')
+      .leftJoin('detail_transaksi', 'transaksi.id', 'detail_transaksi.transaksi_id')
+      .leftJoin('users', 'transaksi.user_id', 'users.id')
+      .select('transaksi.*', 'users.name as user_name', 'detail_transaksi.*')
+      .where('transaksi.id', req.params.id);
+
+    if (!transaksi.length) {
       return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
     res.json(transaksi);
@@ -67,31 +67,31 @@ export const store = async (req, res) => {
 
   const { user_id, produk } = req.body;
 
-  const t = await Transaction.start(); // Memulai transaksi
+  const trx = await db.transaction(); // Memulai transaksi
 
   try {
-    const transaksi = await Transaksi.create({ user_id, status: 'pending', total: 0 }, { transaction: t });
+    const [transaksiId] = await trx('transaksi').insert({ user_id, status: 'pending', total: 0 }).returning('id');
 
     let total = 0;
     for (const produkData of produk) {
-      const produkRecord = await Produk.findByPk(produkData.id);
+      const produkRecord = await db('produk').where('id', produkData.id).first();
       const subtotal = produkRecord.harga * produkData.jumlah;
       total += subtotal;
 
-      await DetailTransaksi.create({
-        transaksi_id: transaksi.id,
+      await trx('detail_transaksi').insert({
+        transaksi_id: transaksiId,
         produk_id: produkRecord.id,
         jumlah: produkData.jumlah,
         harga: produkRecord.harga,
-      }, { transaction: t });
+      });
     }
 
-    await transaksi.update({ total }, { transaction: t });
+    await trx('transaksi').where('id', transaksiId).update({ total });
 
-    await t.commit(); // Commit transaksi
-    res.status(201).json({ message: 'Transaksi berhasil dibuat.', transaksi });
+    await trx.commit(); // Commit transaksi
+    res.status(201).json({ message: 'Transaksi berhasil dibuat.', transaksiId });
   } catch (error) {
-    await t.rollback(); // Rollback jika terjadi kesalahan
+    await trx.rollback(); // Rollback jika terjadi kesalahan
     console.error(error); // Log error untuk debugging
     res.status(500).json({ error: 'Terjadi kesalahan saat membuat transaksi. Silakan coba lagi.' });
   }
@@ -105,12 +105,12 @@ export const update = async (req, res) => {
   }
 
   try {
-    const transaksi = await Transaksi.findByPk(req.params.id);
+    const transaksi = await db('transaksi').where('id', req.params.id).first();
     if (!transaksi) {
       return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
 
-    await transaksi.update({ status: req.body.status });
+    await db('transaksi').where('id', req.params.id).update({ status: req.body.status });
     res.json({ message: 'Status transaksi berhasil diperbarui.', transaksi });
   } catch (error) {
     console.error(error); // Log error untuk debugging
@@ -121,7 +121,7 @@ export const update = async (req, res) => {
 // Fungsi untuk menghapus transaksi
 export const destroy = async (req, res) => {
   try {
-    const transaksi = await Transaksi.findByPk(req.params.id);
+    const transaksi = await db('transaksi').where('id', req.params.id).first();
     if (!transaksi) {
       return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
@@ -130,8 +130,8 @@ export const destroy = async (req, res) => {
       return res.status(400).json({ error: 'Hanya transaksi dengan status pending yang dapat dihapus.' });
     }
 
-    await DetailTransaksi.destroy({ where: { transaksi_id: transaksi.id } });
-    await transaksi.destroy();
+    await db('detail_transaksi').where('transaksi_id', transaksi.id).delete();
+    await db('transaksi').where('id', req.params.id).delete();
 
     res.json({ message: 'Transaksi berhasil dihapus.' });
   } catch (error) {
@@ -142,7 +142,7 @@ export const destroy = async (req, res) => {
 
 // Fungsi untuk memberikan ulasan pada transaksi
 export const ulasan = async (req, res) => {
-  const transaksi = await Transaksi.findByPk(req.params.id);
+  const transaksi = await db('transaksi').where('id', req.params.id).first();
   if (!transaksi || transaksi.user_id !== req.user.id) {
     return res.status(403).json({ error: 'Anda tidak memiliki akses untuk memberikan ulasan pada transaksi ini.' });
   }
@@ -154,7 +154,7 @@ export const ulasan = async (req, res) => {
 
   try {
     for (const detail of transaksi.detailTransaksis) {
-      await Ulasan.create({
+      await db('ulasans').insert({
         user_id: req.user.id,
         transaksi_id: transaksi.id,
         produk_id: detail.produk_id,
@@ -174,33 +174,33 @@ export const ulasan = async (req, res) => {
 // Fungsi untuk menampilkan daftar transaksi pembeli
 export const list = async (req, res) => {
   try {
-    const query = {
-      where: { user_id: req.user.id },
-      include: ['user'],
-      order: [['createdAt', 'DESC']],
-    };
+    const query = db('transaksi')
+      .where({ user_id: req.user.id })
+      .leftJoin('users', 'transaksi.user_id', 'users.id')
+      .select('transaksi.*', 'users.name as user_name')
+      .orderBy('transaksi.created_at', 'DESC');
 
     if (req.query.search) {
       const searchTerm = req.query.search;
-      query.where[Op.or] = [
-        { id: { [Op.like]: `%${searchTerm}%` } },
-        { '$user.name$': { [Op.like]: `%${searchTerm}%` } },
-      ];
+      query.where(function() {
+        this.where('transaksi.id', 'like', `%${searchTerm}%`)
+          .orWhere('users.name', 'like', `%${searchTerm}%`);
+      });
     }
 
     if (req.query.status) {
-      query.where.status = req.query.status;
+      query.where('transaksi.status', req.query.status);
     }
 
     if (req.query.date_from) {
-      query.where.createdAt = { [Op.gte]: req.query.date_from };
+      query.where('transaksi.created_at', '>=', req.query.date_from);
     }
 
     if (req.query.date_to) {
-      query.where.createdAt = { [Op.lte]: req.query.date_to };
+      query.where('transaksi.created_at', '<=', req.query.date_to);
     }
 
-    const transaksis = await Transaksi.findAll(query);
+    const transaksis = await query;
     res.json(transaksis);
   } catch (error) {
     console.error(error); // Log error untuk debugging

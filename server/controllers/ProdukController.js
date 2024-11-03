@@ -1,45 +1,42 @@
 // produkController.js
 
-import { Produk, Kategori, Stok, DetailTransaksi, Transaksi } from '../models'; // Pastikan ini mengarah ke model yang benar
+import db from '../database/knex.cjs'; // Mengimpor koneksi database
 import { validationResult } from 'express-validator';
-import bcrypt from 'bcrypt';
 import fs from 'fs'; // Untuk menghapus file
 import path from 'path';
-import { Op } from 'sequelize'; // Pastikan Op diimpor untuk digunakan dalam query
 
 // Fungsi untuk menampilkan semua produk
 export const index = async (req, res) => {
   try {
-    const query = {
-      include: ['kategori', 'stoks'],
-      limit: 10,
-      offset: req.query.page ? (req.query.page - 1) * 10 : 0, // Untuk paginasi
-    };
+    const query = db('produk')
+      .leftJoin('kategori', 'produk.kategori_id', 'kategori.id')
+      .leftJoin('stoks', 'produk.id', 'stoks.produk_id')
+      .select('produk.*', 'kategori.nama as kategori_nama', 'stoks.jumlah as stok_jumlah')
+      .limit(10)
+      .offset(req.query.page ? (req.query.page - 1) * 10 : 0); // Untuk paginasi
 
     if (req.query.search) {
       const searchTerm = req.query.search;
-      query.where = {
-        [Op.or]: [
-          { nama: { [Op.like]: `%${searchTerm}%` } },
-          { deskripsi: { [Op.like]: `%${searchTerm}%` } },
-        ],
-      };
+      query.where(function() {
+        this.where('produk.nama', 'like', `%${searchTerm}%`)
+          .orWhere('produk.deskripsi', 'like', `%${searchTerm}%`);
+      });
     }
 
     if (req.query.kategori) {
-      query.where = { ...query.where, kategoriId: req.query.kategori };
+      query.where('produk.kategori_id', req.query.kategori);
     }
 
     if (req.query.min_harga) {
-      query.where = { ...query.where, harga: { [Op.gte]: req.query.min_harga } };
+      query.where('produk.harga', '>=', req.query.min_harga);
     }
 
     if (req.query.max_harga) {
-      query.where = { ...query.where, harga: { [Op.lte]: req.query.max_harga } };
+      query.where('produk.harga', '<=', req.query.max_harga);
     }
 
-    const produks = await Produk.findAll(query);
-    const kategoris = await Kategori.findAll(); // Ambil semua kategori
+    const produks = await query;
+    const kategoris = await db('kategori').select(); // Ambil semua kategori
 
     res.json({ produks, kategoris });
   } catch (error) {
@@ -51,7 +48,7 @@ export const index = async (req, res) => {
 // Fungsi untuk menampilkan form pembuatan produk (dalam bentuk JSON)
 export const create = async (req, res) => {
   try {
-    const kategoris = await Kategori.findAll();
+    const kategoris = await db('kategori').select();
     res.json({ kategoris });
   } catch (error) {
     console.error(error); // Log error untuk debugging
@@ -74,18 +71,18 @@ export const store = async (req, res) => {
       data.image = imagePath;
     }
 
-    const produk = await Produk.create(data);
+    const [produkId] = await db('produk').insert(data).returning('id'); // Menyimpan data produk dan mengembalikan ID
 
     // Hanya membuat entri dasar di tabel stok
-    await Stok.create({
-      produkId: produk.id,
+    await db('stok').insert({
+      produk_id: produkId,
       jumlah: 0, // Jumlah awal 0
       lokasi_penyimpanan: 'Belum ditentukan',
       tanggal_kadaluarsa: new Date(new Date().setFullYear(new Date().getFullYear() + 1)), // Tanggal default 1 tahun dari sekarang
-      batch_number: `BATCH-${produk.id}`, // Batch number awal
+      batch_number: `BATCH-${produkId}`, // Batch number awal
     });
 
-    res.status(201).json({ message: 'Produk berhasil ditambahkan.', produk });
+    res.status(201).json({ message: 'Produk berhasil ditambahkan.', produkId });
   } catch (error) {
     console.error(error); // Log error untuk debugging
     res.status(500).json({ error: 'Terjadi kesalahan saat menambahkan produk.' });
@@ -95,9 +92,13 @@ export const store = async (req, res) => {
 // Fungsi untuk menampilkan detail produk
 export const show = async (req, res) => {
   try {
-    const produk = await Produk.findByPk(req.params.id, {
-      include: ['stoks', 'ulasans.user'], // Sesuaikan relasi sesuai dengan model Anda
-    });
+    const produk = await db('produk')
+      .leftJoin('stoks', 'produk.id', 'stoks.produk_id')
+      .leftJoin('ulasans', 'produk.id', 'ulasans.produk_id')
+      .select('produk.*', 'stoks.jumlah as stok_jumlah', 'ulasans.*')
+      .where('produk.id', req.params.id)
+      .first();
+
     if (!produk) {
       return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
@@ -111,8 +112,8 @@ export const show = async (req, res) => {
 // Fungsi untuk menampilkan form pengeditan produk
 export const edit = async (req, res) => {
   try {
-    const produk = await Produk.findByPk(req.params.id);
-    const kategoris = await Kategori.findAll();
+    const produk = await db('produk').where('id', req.params.id).first();
+    const kategoris = await db('kategori').select();
     if (!produk) {
       return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
@@ -131,7 +132,7 @@ export const update = async (req, res) => {
   }
 
   try {
-    const produk = await Produk.findByPk(req.params.id);
+    const produk = await db('produk').where('id', req.params.id).first();
     if (!produk) {
       return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
@@ -147,7 +148,7 @@ export const update = async (req, res) => {
       data.image = imagePath;
     }
 
-    await produk.update(data);
+    await db('produk').where('id', req.params.id).update(data);
     res.json({ message: 'Produk berhasil diperbarui.', produk });
   } catch (error) {
     console.error(error); // Log error untuk debugging
@@ -158,33 +159,33 @@ export const update = async (req, res) => {
 // Fungsi untuk menghapus produk
 export const destroy = async (req, res) => {
   try {
-    const produk = await Produk.findByPk(req.params.id);
+    const produk = await db('produk').where('id', req.params.id).first();
     if (!produk) {
       return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
 
     // Hapus ulasan terkait produk
-    await produk.ulasans.destroy();
+    await db('ulasans').where('produk_id', produk.id).delete();
 
     // Hapus detail transaksi terkait produk
-    const detailTransaksis = await DetailTransaksi.findAll({ where: { produkId: produk.id } });
+    const detailTransaksis = await db('detail_transaksi').where({ produk_id: produk.id });
     for (const detail of detailTransaksis) {
-      await detail.destroy();
+      await db('detail_transaksi').where('id', detail.id).delete();
 
       // Cek apakah transaksi masih memiliki detail lain
-      const transaksi = await Transaksi.findByPk(detail.transaksiId);
-      const hasDetails = await DetailTransaksi.count({ where: { transaksiId: transaksi.id } });
+      const transaksi = await db('transaksi').where('id', detail.transaksi_id).first();
+      const hasDetails = await db('detail_transaksi').where('transaksi_id', transaksi.id).count();
       if (hasDetails === 0) {
-        await transaksi.destroy(); // Hapus transaksi jika tidak ada detail lain
+        await db('transaksi').where('id', transaksi.id).delete(); // Hapus transaksi jika tidak ada detail lain
       } else {
         // Jika masih ada detail lain, update total transaksi
-        transaksi.total = await DetailTransaksi.sum('harga * jumlah', { where: { transaksiId: transaksi.id } });
-        await transaksi.save();
+        const total = await db('detail_transaksi').sum('harga * jumlah').where('transaksi_id', transaksi.id);
+        await db('transaksi').where('id', transaksi.id).update({ total });
       }
     }
 
     // Hapus stok terkait produk
-    await produk.stoks.destroy();
+    await db('stoks').where('produk_id', produk.id).delete();
 
     // Hapus gambar produk jika ada
     if (produk.image) {
@@ -192,7 +193,7 @@ export const destroy = async (req, res) => {
     }
 
     // Hapus produk
-    await produk.destroy();
+    await db('produk').where('id', req.params.id).delete();
 
     res.json({ message: 'Produk dan semua data terkait berhasil dihapus.' });
   } catch (error) {
@@ -204,34 +205,33 @@ export const destroy = async (req, res) => {
 // Fungsi untuk memfilter produk berdasarkan kriteria
 export const filter = async (req, res) => {
   try {
-    const query = {
-      include: ['kategori', 'stoks'],
-    };
+    const query = db('produk')
+      .leftJoin('kategori', 'produk.kategori_id', 'kategori.id')
+      .leftJoin('stoks', 'produk.id', 'stoks.produk_id')
+      .select('produk.*', 'kategori.nama as kategori_nama', 'stoks.jumlah as stok_jumlah');
 
     if (req.query.search) {
       const searchTerm = req.query.search;
-      query.where = {
-        [Op.or]: [
-          { nama: { [Op.like]: `%${searchTerm}%` } },
-          { deskripsi: { [Op.like]: `%${searchTerm}%` } },
-        ],
-      };
+      query.where(function() {
+        this.where('produk.nama', 'like', `%${searchTerm}%`)
+          .orWhere('produk.deskripsi', 'like', `%${searchTerm}%`);
+      });
     }
 
     if (req.query.kategori) {
-      query.where = { ...query.where, kategoriId: req.query.kategori };
+      query.where('produk.kategori_id', req.query.kategori);
     }
 
     if (req.query.min_harga) {
-      query.where = { ...query.where, harga: { [Op.gte]: req.query.min_harga } };
+      query.where('produk.harga', '>=', req.query.min_harga);
     }
 
     if (req.query.max_harga) {
-      query.where = { ...query.where, harga: { [Op.lte]: req.query.max_harga } };
+      query.where('produk.harga', '<=', req.query.max_harga);
     }
 
-    const produks = await Produk.findAll(query);
-    const kategoris = await Kategori.findAll(); // Ambil semua kategori
+    const produks = await query;
+    const kategoris = await db('kategori').select(); // Ambil semua kategori
 
     res.json({ produks, kategoris });
   } catch (error) {
