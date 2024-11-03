@@ -1,239 +1,241 @@
-<?php
+// produkController.js
 
-namespace App\Http\Controllers;
+import { Produk, Kategori, Stok, DetailTransaksi, Transaksi } from '../models'; // Pastikan ini mengarah ke model yang benar
+import { validationResult } from 'express-validator';
+import bcrypt from 'bcrypt';
+import fs from 'fs'; // Untuk menghapus file
+import path from 'path';
+import { Op } from 'sequelize'; // Pastikan Op diimpor untuk digunakan dalam query
 
-use App\Models\DetailTransaksi;
-use App\Models\Kategori;
-use App\Models\Produk;
-use App\Models\Stok;
-use App\Models\Transaksi;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Foundation\Validation\ValidatesRequests;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+// Fungsi untuk menampilkan semua produk
+export const index = async (req, res) => {
+  try {
+    const query = {
+      include: ['kategori', 'stoks'],
+      limit: 10,
+      offset: req.query.page ? (req.query.page - 1) * 10 : 0, // Untuk paginasi
+    };
 
-class ProdukController extends Controller
-{
-    use AuthorizesRequests, ValidatesRequests;
-
-    public function index(Request $request)
-    {
-        $query = Produk::with(['kategori', 'stoks']);
-        $kategoris = Kategori::all();
-
-        if ($request->has('search') && $request->search != "") {
-            $searchTerm = $request->search;
-            $query->where('nama', 'LIKE', "%{$searchTerm}%")
-                ->orWhere('deskripsi', 'LIKE', "%{$searchTerm}%");
-        }
-
-        if ($request->has('kategori') && $request->kategori != "") {
-            $query->where('kategori_id', $request->kategori);
-        }
-
-        if ($request->has('min_harga') && $request->min_harga != "") {
-            $query->where('harga', '>=', $request->min_harga);
-        }
-
-        if ($request->has('max_harga') && $request->max_harga != "") {
-            $query->where('harga', '<=', $request->max_harga);
-        }
-
-        $produks = $query->paginate(10);
-        $filtered = false;
-
-        return view('produk.index', compact('produks', 'kategoris', 'filtered'));
+    if (req.query.search) {
+      const searchTerm = req.query.search;
+      query.where = {
+        [Op.or]: [
+          { nama: { [Op.like]: `%${searchTerm}%` } },
+          { deskripsi: { [Op.like]: `%${searchTerm}%` } },
+        ],
+      };
     }
 
-    public function create()
-    {
-        $kategoris = Kategori::all();
-        return view('produk.create', compact('kategoris'));
+    if (req.query.kategori) {
+      query.where = { ...query.where, kategoriId: req.query.kategori };
     }
 
-    public function store(Request $request)
-    {
-        $request->validate([
-            'nama' => 'required',
-            'deskripsi' => 'nullable',
-            'harga' => 'required|numeric',
-            'kategori_id' => 'required|exists:kategoris,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        ]);
-
-        DB::beginTransaction();
-
-        try {
-            //$produk = Produk::create($request->all());
-
-            $data = $request->all();
-
-            if ($request->hasFile('image')) {
-                $imagePath = $request->file('image')->store('produk_images', 'public');
-                $data['image'] = $imagePath;
-            }
-
-            $produk = Produk::create($data);
-
-            // Hanya membuat entri dasar di tabel stok
-            Stok::create([
-                'produk_id' => $produk->id,
-                'jumlah' => 0, // Jumlah awal 0
-                'lokasi_penyimpanan' => 'Belum ditentukan',
-                'tanggal_kadaluarsa' => now()->addYear(), // Tanggal default 1 tahun dari sekarang
-                'batch_number' => 'BATCH-' . $produk->id, // Batch number awal
-            ]);
-
-            DB::commit();
-            return redirect()->route('produk.index')->with('success', 'Produk berhasil ditambahkan.');
-        } catch (\Exception $e) {
-            DB::rollback();
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat menambahkan produk.');
-        }
+    if (req.query.min_harga) {
+      query.where = { ...query.where, harga: { [Op.gte]: req.query.min_harga } };
     }
 
-    public function show(Produk $produk)
-    {
-        $produk->load(['stoks', 'ulasans.user']);
-        return view('produk.show', compact('produk'));
+    if (req.query.max_harga) {
+      query.where = { ...query.where, harga: { [Op.lte]: req.query.max_harga } };
     }
 
-    public function edit(Produk $produk)
-    {
-        $kategoris = Kategori::all();
-        return view('produk.edit', compact('produk', 'kategoris'));
+    const produks = await Produk.findAll(query);
+    const kategoris = await Kategori.findAll(); // Ambil semua kategori
+
+    res.json({ produks, kategoris });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat produk' });
+  }
+};
+
+// Fungsi untuk menampilkan form pembuatan produk (dalam bentuk JSON)
+export const create = async (req, res) => {
+  try {
+    const kategoris = await Kategori.findAll();
+    res.json({ kategoris });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data kategori' });
+  }
+};
+
+// Fungsi untuk menyimpan produk baru
+export const store = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const data = req.body;
+
+    if (req.file) {
+      const imagePath = `produk_images/${req.file.filename}`; // Simpan path
+      data.image = imagePath;
     }
 
-    public function update(Request $request, Produk $produk)
-    {
-        $validated = $request->validate([
-            'nama' => 'required|max:255',
-            'deskripsi' => 'nullable',
-            'harga' => 'required|numeric|min:0',
-            'kategori_id' => 'required|exists:kategoris,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-        ]);
+    const produk = await Produk.create(data);
 
-        $data = $request->all();
+    // Hanya membuat entri dasar di tabel stok
+    await Stok.create({
+      produkId: produk.id,
+      jumlah: 0, // Jumlah awal 0
+      lokasi_penyimpanan: 'Belum ditentukan',
+      tanggal_kadaluarsa: new Date(new Date().setFullYear(new Date().getFullYear() + 1)), // Tanggal default 1 tahun dari sekarang
+      batch_number: `BATCH-${produk.id}`, // Batch number awal
+    });
 
-        if ($request->hasFile('image')) {
-            // Delete old image
-            if ($produk->image) {
-                Storage::disk('public')->delete($produk->image);
-            }
+    res.status(201).json({ message: 'Produk berhasil ditambahkan.', produk });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat menambahkan produk.' });
+  }
+};
 
-            $imagePath = $request->file('image')->store('produk_images', 'public');
-            $data['image'] = $imagePath;
-        }
+// Fungsi untuk menampilkan detail produk
+export const show = async (req, res) => {
+  try {
+    const produk = await Produk.findByPk(req.params.id, {
+      include: ['stoks', 'ulasans.user'], // Sesuaikan relasi sesuai dengan model Anda
+    });
+    if (!produk) {
+      return res.status(404).json({ error: 'Produk tidak ditemukan' });
+    }
+    res.json(produk);
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat produk' });
+  }
+};
 
-        $produk->update($data);
+// Fungsi untuk menampilkan form pengeditan produk
+export const edit = async (req, res) => {
+  try {
+    const produk = await Produk.findByPk(req.params.id);
+    const kategoris = await Kategori.findAll();
+    if (!produk) {
+      return res.status(404).json({ error: 'Produk tidak ditemukan' });
+    }
+    res.json({ produk, kategoris });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data produk' });
+  }
+};
 
-        return redirect()->route('produk.index')->with('success', 'Produk berhasil diperbarui.');
+// Fungsi untuk memperbarui produk
+export const update = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const produk = await Produk.findByPk(req.params.id);
+    if (!produk) {
+      return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
 
-    public function destroy(Produk $produk)
-    {
-        DB::beginTransaction();
+    const data = req.body;
 
-        try {
-            // Hapus ulasan terkait produk
-            $produk->ulasans()->delete();
-
-            // Hapus detail transaksi terkait produk
-            $detailTransaksis = DetailTransaksi::where('produk_id', $produk->id)->get();
-            foreach ($detailTransaksis as $detail) {
-                $transaksiId = $detail->transaksi_id;
-                $detail->delete();
-
-                // Cek apakah transaksi masih memiliki detail lain
-                if (DetailTransaksi::where('transaksi_id', $transaksiId)->count() == 0) {
-                    // Jika tidak ada detail lain, hapus transaksi
-                    Transaksi::destroy($transaksiId);
-                } else {
-                    // Jika masih ada detail lain, update total transaksi
-                    $transaksi = Transaksi::find($transaksiId);
-                    $transaksi->total = $transaksi->detailTransaksis->sum(function ($detail) {
-                        return $detail->harga * $detail->jumlah;
-                    });
-                    $transaksi->save();
-                }
-            }
-
-            // Hapus stok terkait produk
-            $produk->stoks()->delete();
-
-            if ($produk->image) {
-                Storage::disk('public')->delete($produk->image);
-            }
-
-            // Hapus produk
-            $produk->delete();
-
-            DB::commit();
-            return redirect()->route('produk.index')->with('success', 'Produk dan semua data terkait berhasil dihapus.');
-        } catch (\Exception $e) {
-            DB::rollback();
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat menghapus produk: ' . $e->getMessage());
-        }
+    if (req.file) {
+      // Hapus gambar lama
+      if (produk.image) {
+        fs.unlinkSync(path.join(__dirname, '../public', produk.image));
+      }
+      const imagePath = `produk_images/${req.file.filename}`; // Simpan path baru
+      data.image = imagePath;
     }
 
-    // ROLE PEMBELI
-    public function filter(Request $request)
-    {
-        $query = Produk::with(['kategori', 'stoks']);
-        $kategoris = Kategori::all();
+    await produk.update(data);
+    res.json({ message: 'Produk berhasil diperbarui.', produk });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat memperbarui produk.' });
+  }
+};
 
-        if ($request->has('search') && $request->search != "") {
-            $searchTerm = $request->search;
-            $query->where('nama', 'LIKE', "%{$searchTerm}%")
-                ->orWhere('deskripsi', 'LIKE', "%{$searchTerm}%");
-        }
-
-        if ($request->has('kategori') && $request->kategori != "") {
-            $query->where('kategori_id', $request->kategori);
-        }
-
-        if ($request->has('min_harga') && $request->min_harga != "") {
-            $query->where('harga', '>=', $request->min_harga);
-        }
-
-        if ($request->has('max_harga') && $request->max_harga != "") {
-            $query->where('harga', '<=', $request->max_harga);
-        }
-
-        $produks = $query->paginate(10);
-        $filtered = true;
-
-        return view('produk.list', compact('produks', 'kategoris', 'filtered'));
+// Fungsi untuk menghapus produk
+export const destroy = async (req, res) => {
+  try {
+    const produk = await Produk.findByPk(req.params.id);
+    if (!produk) {
+      return res.status(404).json({ error: 'Produk tidak ditemukan' });
     }
 
-    public function list(Request $request)
-    {
-        $query = Produk::with(['kategori', 'stoks']);
-        $kategoris = Kategori::all();
+    // Hapus ulasan terkait produk
+    await produk.ulasans.destroy();
 
-        if ($request->has('search')) {
-            $searchTerm = $request->search;
-            $query->where('nama', 'LIKE', "%{$searchTerm}%")
-                ->orWhere('deskripsi', 'LIKE', "%{$searchTerm}%");
-        }
+    // Hapus detail transaksi terkait produk
+    const detailTransaksis = await DetailTransaksi.findAll({ where: { produkId: produk.id } });
+    for (const detail of detailTransaksis) {
+      await detail.destroy();
 
-        if ($request->has('kategori')) {
-            $query->where('kategori_id', $request->kategori);
-        }
-
-        if ($request->has('min_harga')) {
-            $query->where('harga', '>=', $request->min_harga);
-        }
-
-        if ($request->has('max_harga')) {
-            $query->where('harga', '<=', $request->max_harga);
-        }
-
-        $produks = $query->paginate(10);
-        $filtered = false;
-
-        return view('produk.list', compact('produks', 'kategoris', 'filtered'));
+      // Cek apakah transaksi masih memiliki detail lain
+      const transaksi = await Transaksi.findByPk(detail.transaksiId);
+      const hasDetails = await DetailTransaksi.count({ where: { transaksiId: transaksi.id } });
+      if (hasDetails === 0) {
+        await transaksi.destroy(); // Hapus transaksi jika tidak ada detail lain
+      } else {
+        // Jika masih ada detail lain, update total transaksi
+        transaksi.total = await DetailTransaksi.sum('harga * jumlah', { where: { transaksiId: transaksi.id } });
+        await transaksi.save();
+      }
     }
-}
+
+    // Hapus stok terkait produk
+    await produk.stoks.destroy();
+
+    // Hapus gambar produk jika ada
+    if (produk.image) {
+      fs.unlinkSync(path.join(__dirname, '../public', produk.image));
+    }
+
+    // Hapus produk
+    await produk.destroy();
+
+    res.json({ message: 'Produk dan semua data terkait berhasil dihapus.' });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat menghapus produk.' });
+  }
+};
+
+// Fungsi untuk memfilter produk berdasarkan kriteria
+export const filter = async (req, res) => {
+  try {
+    const query = {
+      include: ['kategori', 'stoks'],
+    };
+
+    if (req.query.search) {
+      const searchTerm = req.query.search;
+      query.where = {
+        [Op.or]: [
+          { nama: { [Op.like]: `%${searchTerm}%` } },
+          { deskripsi: { [Op.like]: `%${searchTerm}%` } },
+        ],
+      };
+    }
+
+    if (req.query.kategori) {
+      query.where = { ...query.where, kategoriId: req.query.kategori };
+    }
+
+    if (req.query.min_harga) {
+      query.where = { ...query.where, harga: { [Op.gte]: req.query.min_harga } };
+    }
+
+    if (req.query.max_harga) {
+      query.where = { ...query.where, harga: { [Op.lte]: req.query.max_harga } };
+    }
+
+    const produks = await Produk.findAll(query);
+    const kategoris = await Kategori.findAll(); // Ambil semua kategori
+
+    res.json({ produks, kategoris });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat produk' });
+  }
+};

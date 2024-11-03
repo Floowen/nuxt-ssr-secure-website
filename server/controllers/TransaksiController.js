@@ -1,216 +1,209 @@
-<?php
-// app/Http/Controllers/TransaksiController.php
+// transaksiController.js
 
-namespace App\Http\Controllers;
+import { Transaksi, Produk, Ulasan, DetailTransaksi } from '../models'; // Pastikan ini mengarah ke model yang benar
+import { validationResult } from 'express-validator';
+import { Op } from 'sequelize'; // Operator untuk pencarian
+import { Transaction } from 'sequelize'; // Untuk transaksi database
 
-use App\Models\Produk;
-use App\Models\Transaksi;
-use App\Models\Ulasan;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Illuminate\Foundation\Validation\ValidatesRequests;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+// Fungsi untuk menampilkan semua transaksi
+export const index = async (req, res) => {
+  try {
+    const query = {
+      include: ['user'],
+      where: {},
+      order: [['createdAt', 'DESC']],
+    };
 
-class TransaksiController extends Controller
-{
-    use AuthorizesRequests, ValidatesRequests;
-
-    public function index(Request $request)
-    {
-        $query = Transaksi::with('user');
-
-        if ($request->has('search') && $request->search != "") {
-            $searchTerm = $request->search;
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('id', 'LIKE', "%{$searchTerm}%")
-                    ->orWhereHas('user', function ($q) use ($searchTerm) {
-                        $q->where('name', 'LIKE', "%{$searchTerm}%");
-                    });
-            });
-        }
-
-        if ($request->has('status') && $request->status != "") {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('date_from') && $request->date_from != "") {
-            $query->whereDate('created_at', '>=', $request->date_from);
-        }
-
-        if ($request->has('date_to') && $request->date_to != "") {
-            $query->whereDate('created_at', '<=', $request->date_to);
-        }
-
-        $transaksis = $query->orderBy('created_at', 'desc')->paginate(10);
-
-        return view('transaksi.index', compact('transaksis'));
+    if (req.query.search) {
+      const searchTerm = req.query.search;
+      query.where[Op.or] = [
+        { id: { [Op.like]: `%${searchTerm}%` } },
+        { '$user.name$': { [Op.like]: `%${searchTerm}%` } },
+      ];
     }
 
-    public function show(Transaksi $transaksi)
-    {
-        // $transaksi->load(['user', 'detailTransaksis.produk']);
-        $transaksi = Transaksi::with(['detailTransaksis.produk', 'ulasan', 'user', 'produk'])->findOrFail($transaksi->id);
-        return view('transaksi.show', compact('transaksi'));
+    if (req.query.status) {
+      query.where.status = req.query.status;
     }
 
-    public function create()
-    {
-        // Implementasi untuk membuat transaksi baru
-        return view('transaksi.create');
+    if (req.query.date_from) {
+      query.where.createdAt = { [Op.gte]: req.query.date_from };
     }
 
-    public function store(Request $request)
-    {
-        // Validasi input
-        $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'produk' => 'required|array',
-            'produk.*.id' => 'required|exists:produks,id',
-            'produk.*.jumlah' => 'required|integer|min:1',
-        ]);
-
-        DB::beginTransaction();
-
-        try {
-            $transaksi = Transaksi::create([
-                'user_id' => $validated['user_id'],
-                'status' => 'pending',
-                'total' => 0,
-            ]);
-
-            $total = 0;
-            foreach ($validated['produk'] as $produkData) {
-                $produk = Produk::findOrFail($produkData['id']);
-                $subtotal = $produk->harga * $produkData['jumlah'];
-                $total += $subtotal;
-
-                $transaksi->detailTransaksis()->create([
-                    'produk_id' => $produk->id,
-                    'jumlah' => $produkData['jumlah'],
-                    'harga' => $produk->harga,
-                ]);
-            }
-
-            $transaksi->update(['total' => $total]);
-
-            DB::commit();
-
-            return redirect()->route('transaksi.show', $transaksi)->with('success', 'Transaksi berhasil dibuat.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withInput()->withErrors(['error' => 'Terjadi kesalahan saat membuat transaksi. Silakan coba lagi.']);
-        }
+    if (req.query.date_to) {
+      query.where.createdAt = { [Op.lte]: req.query.date_to };
     }
 
-    public function update(Request $request, Transaksi $transaksi)
-    {
-        $validated = $request->validate([
-            'status' => 'required|in:pending,selesai,batal',
-        ]);
+    const transaksis = await Transaksi.findAll(query);
+    res.json(transaksis);
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data transaksi' });
+  }
+};
 
-        $transaksi->update($validated);
+// Fungsi untuk menampilkan detail transaksi
+export const show = async (req, res) => {
+  try {
+    const transaksi = await Transaksi.findByPk(req.params.id, {
+      include: ['detailTransaksis.produk', 'ulasan', 'user'],
+    });
+    if (!transaksi) {
+      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
+    }
+    res.json(transaksi);
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data transaksi' });
+  }
+};
 
-        return redirect()->route('transaksi.show', $transaksi)->with('success', 'Status transaksi berhasil diperbarui.');
+// Fungsi untuk menyimpan transaksi baru
+export const store = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { user_id, produk } = req.body;
+
+  const t = await Transaction.start(); // Memulai transaksi
+
+  try {
+    const transaksi = await Transaksi.create({ user_id, status: 'pending', total: 0 }, { transaction: t });
+
+    let total = 0;
+    for (const produkData of produk) {
+      const produkRecord = await Produk.findByPk(produkData.id);
+      const subtotal = produkRecord.harga * produkData.jumlah;
+      total += subtotal;
+
+      await DetailTransaksi.create({
+        transaksi_id: transaksi.id,
+        produk_id: produkRecord.id,
+        jumlah: produkData.jumlah,
+        harga: produkRecord.harga,
+      }, { transaction: t });
     }
 
-    public function destroy(Transaksi $transaksi)
-    {
-        if ($transaksi->status !== 'pending') {
-            return back()->withErrors(['error' => 'Hanya transaksi dengan status pending yang dapat dihapus.']);
-        }
+    await transaksi.update({ total }, { transaction: t });
 
-        DB::beginTransaction();
+    await t.commit(); // Commit transaksi
+    res.status(201).json({ message: 'Transaksi berhasil dibuat.', transaksi });
+  } catch (error) {
+    await t.rollback(); // Rollback jika terjadi kesalahan
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat membuat transaksi. Silakan coba lagi.' });
+  }
+};
 
-        try {
-            $transaksi->detailTransaksis()->delete();
-            $transaksi->delete();
+// Fungsi untuk memperbarui status transaksi
+export const update = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
-            DB::commit();
-
-            return redirect()->route('transaksi.index')->with('success', 'Transaksi berhasil dihapus.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withErrors(['error' => 'Terjadi kesalahan saat menghapus transaksi. Silakan coba lagi.']);
-        }
+  try {
+    const transaksi = await Transaksi.findByPk(req.params.id);
+    if (!transaksi) {
+      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
 
-    // ROLE PEMBELI
-    public function ulasan(Request $request, Transaksi $transaksi)
-    {
-        // Pastikan hanya pembeli yang bisa memberikan ulasan
-        if (Auth::id() !== $transaksi->user_id) {
-            return redirect()->back()->with('error', 'Anda tidak memiliki akses untuk memberikan ulasan pada transaksi ini.');
-        }
+    await transaksi.update({ status: req.body.status });
+    res.json({ message: 'Status transaksi berhasil diperbarui.', transaksi });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat memperbarui transaksi' });
+  }
+};
 
-        // Validasi input
-        $validatedData = $request->validate([
-            'rating.*' => 'required|integer|min:1|max:5',
-            'komentar.*' => 'required|string|max:1000',
-        ]);
-
-        // Cek apakah ulasan sudah ada
-        // if ($transaksi->ulasans()->count() > 0) {
-        //     return redirect()->back()->with('error', 'Anda sudah memberikan ulasan untuk transaksi ini.');
-        // }
-
-        // Buat ulasan untuk setiap produk dalam transaksi
-        foreach ($transaksi->detailTransaksis as $index => $detail) {
-            $ulasan = new Ulasan([
-                'user_id' => Auth::id(),
-                'transaksi_id' => $transaksi->id,
-                'produk_id' => $detail->produk_id,
-                'rating' => $validatedData['rating'][$index],
-                'komentar' => $validatedData['komentar'][$index],
-                'tanggal_ulasan' => now(),
-            ]);
-
-            $ulasan->save();
-        }
-
-        return redirect()->route('transaksi.detail', $transaksi->id)->with('success', 'Ulasan berhasil ditambahkan untuk semua produk.');
+// Fungsi untuk menghapus transaksi
+export const destroy = async (req, res) => {
+  try {
+    const transaksi = await Transaksi.findByPk(req.params.id);
+    if (!transaksi) {
+      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
 
-    public function detail(Transaksi $transaksi)
-    {
-        if (Auth::id() !== $transaksi->user_id) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        $transaksi = Transaksi::with(['detailTransaksis.produk', 'ulasan', 'user', 'produk'])->findOrFail($transaksi->id);
-
-        // $transaksi->load(['user', 'detailTransaksis.produk']);
-        return view('transaksi.show', compact('transaksi'));
+    if (transaksi.status !== 'pending') {
+      return res.status(400).json({ error: 'Hanya transaksi dengan status pending yang dapat dihapus.' });
     }
 
-    public function list(Request $request)
-    {
-        $query = Transaksi::with('user')->where('user_id', Auth::id());
+    await DetailTransaksi.destroy({ where: { transaksi_id: transaksi.id } });
+    await transaksi.destroy();
 
-        if ($request->has('search') && $request->search != "") {
-            $searchTerm = $request->search;
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('id', 'LIKE', "%{$searchTerm}%")
-                    ->orWhereHas('user', function ($q) use ($searchTerm) {
-                        $q->where('name', 'LIKE', "%{$searchTerm}%");
-                    });
-            });
-        }
+    res.json({ message: 'Transaksi berhasil dihapus.' });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat menghapus transaksi.' });
+  }
+};
 
-        if ($request->has('status') && $request->status != "") {
-            $query->where('status', $request->status);
-        }
+// Fungsi untuk memberikan ulasan pada transaksi
+export const ulasan = async (req, res) => {
+  const transaksi = await Transaksi.findByPk(req.params.id);
+  if (!transaksi || transaksi.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Anda tidak memiliki akses untuk memberikan ulasan pada transaksi ini.' });
+  }
 
-        if ($request->has('date_from') && $request->date_from != "") {
-            $query->whereDate('created_at', '>=', $request->date_from);
-        }
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
-        if ($request->has('date_to') && $request->date_to != "") {
-            $query->whereDate('created_at', '<=', $request->date_to);
-        }
-
-        $transaksis = $query->orderBy('created_at', 'desc')->paginate(10);
-
-        return view('transaksi.index', compact('transaksis'));
+  try {
+    for (const detail of transaksi.detailTransaksis) {
+      await Ulasan.create({
+        user_id: req.user.id,
+        transaksi_id: transaksi.id,
+        produk_id: detail.produk_id,
+        rating: req.body.rating[detail.id],
+        komentar: req.body.komentar[detail.id],
+        tanggal_ulasan: new Date(),
+      });
     }
-}
+
+    res.json({ message: 'Ulasan berhasil ditambahkan untuk semua produk.' });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal menambahkan ulasan' });
+  }
+};
+
+// Fungsi untuk menampilkan daftar transaksi pembeli
+export const list = async (req, res) => {
+  try {
+    const query = {
+      where: { user_id: req.user.id },
+      include: ['user'],
+      order: [['createdAt', 'DESC']],
+    };
+
+    if (req.query.search) {
+      const searchTerm = req.query.search;
+      query.where[Op.or] = [
+        { id: { [Op.like]: `%${searchTerm}%` } },
+        { '$user.name$': { [Op.like]: `%${searchTerm}%` } },
+      ];
+    }
+
+    if (req.query.status) {
+      query.where.status = req.query.status;
+    }
+
+    if (req.query.date_from) {
+      query.where.createdAt = { [Op.gte]: req.query.date_from };
+    }
+
+    if (req.query.date_to) {
+      query.where.createdAt = { [Op.lte]: req.query.date_to };
+    }
+
+    const transaksis = await Transaksi.findAll(query);
+    res.json(transaksis);
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data transaksi' });
+  }
+};

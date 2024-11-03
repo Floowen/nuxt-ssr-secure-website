@@ -1,109 +1,126 @@
-<?php
+// penggunaController.js
 
-namespace App\Http\Controllers;
+import { User } from '../models'; // Pastikan ini mengarah ke model User Anda
+import { validationResult } from 'express-validator';
+import bcrypt from 'bcrypt';
+import { Role } from '../models/Role'; // Ganti dengan path ke model Role yang sesuai
 
-use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
-use Spatie\Permission\Models\Role;
+// Fungsi untuk menampilkan semua pengguna
+export const index = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      limit: 10,
+      offset: req.query.page ? (req.query.page - 1) * 10 : 0, // Untuk paginasi
+    });
+    res.json(users);
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data pengguna' });
+  }
+};
 
-class PenggunaController extends Controller
-{
-    public function index()
-    {
-        $users = User::paginate(10);
-        return view('pengguna.index', compact('users'));
+// Fungsi untuk menampilkan form pembuatan pengguna (dalam bentuk JSON)
+export const create = async (req, res) => {
+  try {
+    const roles = await Role.findAll();
+    res.json(roles); // Mengembalikan data role
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data role' });
+  }
+};
+
+// Fungsi untuk menyimpan pengguna baru
+export const store = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name, email, password, role } = req.body;
+
+  try {
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
+    // Assign role (pastikan Anda memiliki relasi yang sesuai)
+    await user.setRoles([role]); // Sesuaikan jika menggunakan metode yang berbeda untuk mengatur role
+
+    res.status(201).json({ message: 'Pengguna berhasil ditambahkan!', user });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat menambahkan pengguna' });
+  }
+};
+
+// Fungsi untuk menampilkan form pengeditan pengguna
+export const edit = async (req, res) => {
+  try {
+    const pengguna = await User.findByPk(req.params.id);
+    const roles = await Role.findAll();
+    if (!pengguna) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
+    }
+    res.json({ pengguna, roles });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Gagal memuat data pengguna' });
+  }
+};
+
+// Fungsi untuk memperbarui pengguna
+export const update = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const pengguna = await User.findByPk(req.params.id);
+    if (!pengguna) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
     }
 
-    public function create()
-    {
-        $roles = Role::all();
-        return view('pengguna.create', compact('roles'));
+    const { name, email, password, role } = req.body;
+
+    // Hanya memperbarui password jika disediakan
+    const updatedData = {
+      name,
+      email,
+    };
+
+    if (password) {
+      updatedData.password = bcrypt.hashSync(password, 10);
     }
 
-    public function store(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:8|confirmed',
-                'role' => 'required|exists:roles,name',
-            ]);
+    await pengguna.update(updatedData);
 
-            $user = User::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
-            ]);
+    // Update roles
+    await pengguna.setRoles([role]); // Sesuaikan jika menggunakan metode yang berbeda
 
-            $user->assignRole($validated['role']);
+    res.json({ message: 'Pengguna berhasil diperbarui!', pengguna });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat memperbarui pengguna' });
+  }
+};
 
-            return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil ditambahkan!');
-        } catch (ValidationException $e) {
-            return back()->withErrors($e->errors())->withInput();
-        } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Terjadi kesalahan saat menambahkan pengguna. Silakan coba lagi.'])->withInput();
-        }
+// Fungsi untuk menghapus pengguna
+export const destroy = async (req, res) => {
+  try {
+    const pengguna = await User.findByPk(req.params.id);
+    if (!pengguna) {
+      return res.status(404).json({ error: 'Pengguna tidak ditemukan' });
     }
 
-    public function edit(User $pengguna)
-    {
-        $roles = Role::all();
-        return view('pengguna.edit', compact('pengguna', 'roles'));
-    }
-
-    public function update(Request $request, User $pengguna)
-    {
-        try {
-            if ($request->password != "") {
-                $forms = [
-                    'name' => 'required|string|max:255',
-                    'email' => 'required|string|email|max:255|unique:users,email,' . $pengguna->id,
-                    'role' => 'required|exists:roles,name',
-                    'password' => 'string|min:8',
-                ];
-            } else {
-                $forms = [
-                    'name' => 'required|string|max:255',
-                    'email' => 'required|string|email|max:255|unique:users,email,' . $pengguna->id,
-                    'role' => 'required|exists:roles,name',
-                ];
-            }
-
-            $validated = $request->validate($forms);
-
-            if ($request->password != "") {
-                $pengguna->update([
-                    'name' => $validated['name'],
-                    'email' => $validated['email'],
-                    'password' => Hash::make($validated['password']),
-                ]);
-            } else {
-                $pengguna->update([
-                    'name' => $validated['name'],
-                    'email' => $validated['email'],
-                ]);
-            }
-
-            $pengguna->syncRoles([$validated['role']]);
-
-            return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil diperbarui!');
-        } catch (ValidationException $e) {
-            return back()->withErrors($e->errors())->withInput();
-        } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Terjadi kesalahan saat memperbarui pengguna. Silakan coba lagi.'])->withInput();
-        }
-    }
-
-    public function destroy(User $pengguna)
-    {
-        try {
-            $pengguna->delete();
-            return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil dihapus!');
-        } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Terjadi kesalahan saat menghapus pengguna. Silakan coba lagi.']);
-        }
-    }
-}
+    await pengguna.destroy();
+    res.json({ message: 'Pengguna berhasil dihapus!' });
+  } catch (error) {
+    console.error(error); // Log error untuk debugging
+    res.status(500).json({ error: 'Terjadi kesalahan saat menghapus pengguna' });
+  }
+};
