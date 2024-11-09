@@ -1,9 +1,9 @@
 // routes/kategoriRoutes.js
 
 import { Router } from 'express';
-import KategoriController from './controllers/kategoriController';
-import checkRole from '../middlewares/checkRoleMiddleware';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as KategoriController from '../controllers/KategoriController';
+import checkRole from '../../middleware/checkRoleMiddleware';
+import * as validationMiddleware from '../../middleware/validationMiddleware';
 
 const kategoriRoutes = Router();
 

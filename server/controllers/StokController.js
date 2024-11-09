@@ -1,6 +1,6 @@
 // stokController.js
 
-import { Stok, Produk } from '../models'; // Pastikan ini mengarah ke model yang benar
+import { Stok, Produk } from '../../models'; // Pastikan ini mengarah ke model yang benar
 import { validationResult } from 'express-validator';
 
 // Fungsi untuk menampilkan semua stok
@@ -102,5 +102,21 @@ export const destroy = async (req, res) => {
   } catch (error) {
     console.error(error); // Log error untuk debugging
     res.status(500).json({ error: 'Terjadi kesalahan saat menghapus stok' });
+  }
+};
+
+export const show = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stok = await Stok.findByPk(id);
+
+    if (!stok) {
+      return res.status(404).json({ error: 'Stok tidak ditemukan' });
+    }
+
+    res.json(stok);
+  } catch (error) {
+    console.error(error); // Log error for debugging
+    res.status(500).json({ error: 'Gagal memuat data stok' });
   }
 };

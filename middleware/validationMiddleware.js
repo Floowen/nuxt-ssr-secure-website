@@ -1,5 +1,23 @@
 const { body } = require('express-validator');
 
+const isImage = (value, { req }) => {
+  if (!req.file) {
+    throw new Error('File is required');
+  }
+
+  const fileTypes = ['image/jpeg', 'image/png', 'image/gif'];
+  if (!fileTypes.includes(req.file.mimetype)) {
+    throw new Error('File must be an image (jpeg, png, gif)');
+  }
+
+  return true;
+};
+
+exports.validateKategori = [
+  body('name').notEmpty().withMessage('Category name is required'),
+  // Add other validations as needed...
+];
+
 // Middleware untuk validasi input pada controller PenggunaController
 exports.validatePengguna = [
   body('name').isString().isLength({ max: 255 }).notEmpty().withMessage('Nama pengguna diperlukan'),
@@ -20,7 +38,6 @@ exports.validateProduk = [
   body('deskripsi').optional().isString().withMessage('Deskripsi harus berupa string'),
   body('harga').isNumeric().withMessage('Harga harus berupa angka'),
   body('kategori_id').notEmpty().withMessage('ID kategori diperlukan'),
-  body('image').optional().isImage().withMessage('File harus berupa gambar'),
 ];
 
 // Middleware untuk validasi input pada controller StokController

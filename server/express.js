@@ -11,7 +11,7 @@ import { stokRoutes } from './routes/stokRoutes'; // Pastikan untuk menambahkann
 import { produkRoutes } from './routes/produkRoutes'; // Pastikan untuk menambahkannya
 import { transaksiRoutes } from './routes/transaksiRoutes'; // Pastikan untuk menambahkannya
 import { ulasanRoutes } from './routes/ulasanRoutes'; // Pastikan untuk menambahkannya
-import checkRole from './middleware/checkRoleMiddleware'; // Middleware untuk pemeriksaan peran
+import checkRole from '../middleware/checkRoleMiddleware'; // Middleware untuk pemeriksaan peran
 
 /** Create express instance */
 const app = express();

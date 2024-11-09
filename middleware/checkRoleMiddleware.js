@@ -1,12 +1,12 @@
 // checkRoleMiddleware.js
 
-const { User } = require('../models'); // Pastikan ini mengarah ke model yang benar
+const { User } = require('../models'); // Ensure this points to the correct path
 
-// Middleware untuk memeriksa peran pengguna
+// Middleware to check user roles
 const checkRole = (...roles) => {
   return async (req, res, next) => {
     const user = await User.findByPk(req.user.id, {
-      include: ['roles'], // Pastikan relasi dengan model role sudah diatur
+      include: ['roles'], // Ensure the association with the role model is set up
     });
 
     if (!user || !user.roles.some(role => roles.includes(role.name))) {

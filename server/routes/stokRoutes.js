@@ -1,9 +1,9 @@
 // routes/stokRoutes.js
 
 import { Router } from 'express';
-import StokController from './controllers/stokController';
-import checkRole from '../middlewares/checkRoleMiddleware';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as StokController from '../controllers/stokController';
+import checkRole from '../../middleware/checkRoleMiddleware';
+import * as validationMiddleware from '../../middleware/validationMiddleware';
 
 const stokRoutes = Router();
 
@@ -12,5 +12,4 @@ stokRoutes.post('/', checkRole('admin'), validationMiddleware.validateStok, Stok
 stokRoutes.get('/:id', StokController.show);
 stokRoutes.put('/:id', checkRole('admin'), validationMiddleware.validateStok, StokController.update);
 stokRoutes.delete('/:id', checkRole('admin'), StokController.destroy);
-
 export { stokRoutes };

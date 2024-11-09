@@ -1,8 +1,8 @@
 // routes/transaksiRoutes.js
 
 import { Router } from 'express';
-import TransaksiController from './controllers/transaksiController';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as TransaksiController from '../controllers/TransaksiController';
+import validationMiddleware from '../../middleware/validationMiddleware';
 
 const transaksiRoutes = Router();
 

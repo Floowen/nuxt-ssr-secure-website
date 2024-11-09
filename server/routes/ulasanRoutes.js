@@ -1,8 +1,8 @@
 // routes/ulasanRoutes.js
 
 import { Router } from 'express';
-import UlasanController from './controllers/ulasanController';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as UlasanController from '../controllers/ulasanController';
+import * as validationMiddleware from '../../middleware/validationMiddleware';
 
 const ulasanRoutes = Router();
 

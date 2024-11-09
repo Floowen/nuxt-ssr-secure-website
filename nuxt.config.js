@@ -158,16 +158,25 @@ export default {
    * Build configuration
    */
   build: {
-    /**
-     * You can extend webpack config here
-     */
-    analyze: false,
-    extend(config, ctx) {
-      // For debugging
-      if (ctx.isDev) {
-        config.devtool = ctx.isClient ? 'source-map' : 'inline-source-map'
-      }
-    },
+    extend(config, { isDev, isClient }) {
+      // Ignore the 'fs' module
+      config.node = {
+        fs: 'empty'
+      };
+
+      // Add Babel loader for node_modules
+      config.module.rules.push({
+        test: /\.js$/,
+        exclude: /node_modules\/(?!express-validator)/, // Transpile express-validator
+        use: {
+          loader: 'babel-loader',
+          options: {
+            presets: ['@babel/preset-env'],
+            plugins: ['@babel/plugin-proposal-optional-chaining']
+          }
+        }
+      });
+    }
   },
 
   /** Set NodeJS Environment */

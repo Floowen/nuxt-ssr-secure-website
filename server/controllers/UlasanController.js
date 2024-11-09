@@ -1,6 +1,6 @@
 // ulasanController.js
 
-import { Ulasan, Produk } from '../models'; // Pastikan ini mengarah ke model yang benar
+import { Ulasan, Produk } from '../../models'; // Pastikan ini mengarah ke model yang benar
 import { validationResult } from 'express-validator';
 
 // Fungsi untuk menampilkan semua ulasan

@@ -1,9 +1,9 @@
 // routes/produkRoutes.js
 
 import { Router } from 'express';
-import ProdukController from './controllers/produkController';
-import checkRole from '../middlewares/checkRoleMiddleware';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as ProdukController from '../controllers/ProdukController';
+import checkRole from '../../middleware/checkRoleMiddleware';
+import * as validationMiddleware from '../../middleware/validationMiddleware';
 
 const produkRoutes = Router();
 

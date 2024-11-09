@@ -1,8 +1,8 @@
 // routes/keranjangRoutes.js
 
 import { Router } from 'express';
-import KeranjangController from './controllers/keranjangController';
-import validationMiddleware from '../middlewares/validationMiddleware';
+import * as KeranjangController from '../controllers/keranjangController';
+import validationMiddleware from '../../middleware/validationMiddleware';
 
 const keranjangRoutes = Router();
 

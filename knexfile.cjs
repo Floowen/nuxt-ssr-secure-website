@@ -4,6 +4,7 @@ module.exports = {
   development: {
     client: process.env.DB_CLIENT,
     connection: {
+      filename: process.env.DB_STORAGE,
       port: process.env.DB_PORT,
       database: process.env.DB_NAME,
       host: process.env.DB_HOST,
@@ -11,6 +12,7 @@ module.exports = {
       password: process.env.DB_PASSWORD,
       charset: process.env.DB_CHARSET,
     },
+    useNullAsDefault: true,
     migrations: {
       directory: './server/database/migrations',
       loadExtensions: ['.cjs'],
@@ -30,6 +32,7 @@ module.exports = {
       password: process.env.DB_PASSWORD,
       charset: process.env.DB_CHARSET,
     },
+    useNullAsDefault: true,
     migrations: {
       directory: './server/database/migrations',
     },

@@ -1,6 +1,6 @@
 // kategoriController.js
 
-import { Kategori } from '../models'; // Pastikan ini mengarah ke model Kategori Anda
+import { Kategori } from '../../models'; // Pastikan ini mengarah ke model Kategori Anda
 import { validationResult } from 'express-validator';
 
 // Fungsi untuk menampilkan semua kategori
@@ -91,5 +91,21 @@ export const destroy = async (req, res) => {
   } catch (error) {
     console.error(error); // Log error untuk debugging
     res.status(500).json({ error: 'Gagal menghapus kategori' });
+  }
+};
+
+export const show = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const kategori = await Kategori.findByPk(id);
+
+    if (!kategori) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    res.json(kategori);
+  } catch (error) {
+    console.error(error); // Log error for debugging
+    res.status(500).json({ error: 'Failed to load category' });
   }
 };
