@@ -14,36 +14,37 @@
         </h3>
       </span>
 
-      <v-row class="mt-10">
-        <v-col v-for="(card, i) in cards" :key="i" cols="12" md="6">
-          <v-hover v-slot="{ hover }">
-            <v-card rounded="md" :class="`${hover ? 'on-hover' : ''}`">
-              <div class="d-flex">
-                <div style="width: 40px">
-                  <v-img
-                    contain
-                    height="15"
-                    class="ml-4 my-6 align-self-start"
-                    :src="icon"
-                  ></v-img>
-                </div>
-
-                <div class="flex-grow-1">
-                  <v-card-title
-                    class="title-styles pt-4"
-                    v-text="card.title"
-                  ></v-card-title>
-
-                  <v-card-subtitle
-                    class="subtitle-styles pt-1 pb-5"
-                    v-text="card.subTitle"
-                  ></v-card-subtitle>
-                </div>
+      <!-- Menggunakan v-slide-group untuk membuat carousel -->
+      <v-slide-group show-arrows class="mt-10">
+        <v-slide-item
+          v-for="(card, i) in cards"
+          :key="i"
+          class="d-flex"
+        >
+          <!-- Ubah md="6" menjadi md="4" untuk menampilkan 3 kartu atau md="3" untuk 4 kartu -->
+          <v-col cols="12" md="2">
+            <v-card flat class="px-6 py-4">
+              <div class="d-flex align-center mb-2">
+                <!-- Bintang Rating -->
+                <v-icon color="amber" v-for="n in 5" :key="n">mdi-star</v-icon>
               </div>
+              <div class="d-flex align-center mb-2">
+                <!-- Ikon Centang -->
+                <v-icon color="green" class="mr-2">mdi-check-circle</v-icon>
+              </div>
+              <!-- Nama Pelanggan -->
+              <p class="font-weight-bold" style="color: #47536b;">
+                {{ card.name }}
+              </p>
+              <!-- Teks Ulasan -->
+              <p class="text-body-2" style="color: #47536b;">
+                {{ card.review }}
+              </p>
             </v-card>
-          </v-hover>
-        </v-col>
-      </v-row>
+          </v-col>
+        </v-slide-item>
+      </v-slide-group>
+
     </v-container>
   </v-container>
 </template>
@@ -64,14 +65,7 @@ export default {
     cards: {
       type: Array,
       required: true,
-      default() {
-        return []
-      },
-    },
-    icon: {
-      type: String,
-      required: false,
-      default: '/img/icon-checkmark.png',
+      default() {},
     },
     backgroundImage: {
       type: String,
@@ -84,7 +78,7 @@ export default {
       default: '#f9fafd',
     },
   },
-}
+};
 </script>
 
 <style lang="scss" scoped>
@@ -93,22 +87,18 @@ export default {
   background-position: center;
   background-size: cover;
   .v-card {
-    min-height: 144px;
     transition: all 0.3s ease-in-out;
     box-shadow: 0px 15px 35px 0px rgba(112, 144, 176, 0.2);
-    .title-styles {
-      font-weight: 500 !important;
-      color: #47536b;
-    }
-    .subtitle-styles {
+    width: 600px;
+    .text-body-2 {
       font-size: 1.02em;
       line-height: 1.5em;
       color: #6b7b9c;
+      width: 100%;
     }
   }
-  .on-hover {
-    box-shadow: 0px 15px 35px 0px rgba(112, 144, 176, 0.4);
-    transform: scale(1.03);
+  .v-icon {
+    font-size: 20px;
   }
 }
 </style>

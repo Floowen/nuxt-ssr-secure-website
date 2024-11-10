@@ -1,24 +1,24 @@
 <template>
   <v-app>
     <nav>
-      <v-app-bar v-cloak color="black darken-3" dark app>
+      <v-app-bar v-cloak color="#ffffff" dark app>
         <nuxt-link to="/" class="d-flex">
           <img class="mt-2 mr-3" src="/favicon.ico" height="23" />
-          <v-toolbar-title class="text-h6">Your Website</v-toolbar-title>
+          <v-toolbar-title class="text-h6">EatHub</v-toolbar-title>
         </nuxt-link>
 
         <v-spacer></v-spacer>
 
+        <nuxt-link v-if="mdAndUp" to="/product">
+          <v-toolbar-title class="body-1 mr-10">Product</v-toolbar-title>
+        </nuxt-link>
+
         <nuxt-link v-if="mdAndUp" to="/">
-          <v-toolbar-title class="body-1 mr-10">Home</v-toolbar-title>
+          <v-toolbar-title class="body-1 mr-10">Sell</v-toolbar-title>
         </nuxt-link>
 
         <nuxt-link v-if="mdAndUp" to="/about">
-          <v-toolbar-title class="body-1 mr-10">About</v-toolbar-title>
-        </nuxt-link>
-
-        <nuxt-link v-if="mdAndUp" to="/contact">
-          <v-toolbar-title class="body-1 mr-10">Contact</v-toolbar-title>
+          <v-toolbar-title class="body-1 mr-10">About Us</v-toolbar-title>
         </nuxt-link>
 
         <nuxt-link
@@ -28,8 +28,22 @@
           <v-toolbar-title class="body-1 mr-10">Admin</v-toolbar-title>
         </nuxt-link>
 
+        <nuxt-link
+          v-if="mdAndUp && $store.state.login.type === 'admin'"
+          to="/logout"
+        >
+          <v-toolbar-title class="body-1 mr-10">Logout</v-toolbar-title>
+        </nuxt-link>
+
+        <nuxt-link
+          v-if="mdAndUp && $store.state.login.type === 'client'"
+          to="/logout"
+        >
+          <v-toolbar-title class="body-1 mr-10">Logout</v-toolbar-title>
+        </nuxt-link>
+
         <nuxt-link v-if="mdAndUp && !loggedIn && showSignIn" to="/login">
-          <v-toolbar-title class="body-1 mr-10">Sign in</v-toolbar-title>
+          <v-toolbar-title class="body-1 mr-10" >Sign in</v-toolbar-title>
         </nuxt-link>
 
         <v-menu
@@ -193,6 +207,9 @@ body .v-application {
   /** --- App Bar: Content width */
 
   nav {
+    
+    width: 100%;
+    z-index: 1000; /* Pastikan navbar berada di atas */
     /** Set toolbar content width to always match v-container width */
     .v-toolbar__content {
       width: 100%;
@@ -232,9 +249,9 @@ body .v-application {
       }
       .v-toolbar__title {
         text-decoration: none;
-        color: white;
+        color: rgb(0, 0, 0);
         &:hover {
-          color: #84d2fa;
+          color: #ffaf94;
         }
       }
     }
@@ -355,4 +372,21 @@ body .v-application {
     }
   }
 }
+
+.v-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.footer-bg {
+  position: relative;
+  width: 100%;
+}
+
+.v-main {
+  margin-bottom: 400px;
+  flex: 1;
+}
+
+
 </style>

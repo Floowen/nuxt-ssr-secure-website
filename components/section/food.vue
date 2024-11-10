@@ -1,6 +1,6 @@
 <template>
   <v-container
-    class="section-technology"
+    class="section-food"
     :style="`background-image: url('${backgroundImage}'); 
              background-color: ${backgroundColor}`"
     fluid
@@ -10,52 +10,40 @@
         <h1
           v-if="heroTitle"
           class="text-h2 mb-6 text-center"
-          style="color: #4a556d"
+          style="color: #4a556d; font-weight: 100; text-shadow: 1px 1px 0 #4a556d;"
         >
           {{ heroTitle }}
         </h1>
         <h2
           v-if="title"
-          class="text-h4 text-center mb-12"
-          style="color: #4a556d"
+          class="text-h3 text-center mb-12"
+          style="color: #4a556d; font-weight: 2000; text-shadow: 1px 1px 0 #4a556d;"
         >
           {{ title }}
         </h2>
       </span>
       <v-row>
-        <v-col v-for="(card, i) in cards" :key="i" cols="12" md="6">
+        <v-col v-for="(card, i) in cards" :key="i" cols="12" md="3">
           <v-hover v-slot="{ hover }">
             <v-card shaped :class="`${hover ? 'on-hover' : ''}`">
-              <div class="d-flex flex-no-wrap justify-space-between">
-                <div
-                  class="d-flex flex-column flex-no-wrap justify-space-between"
-                >
-                  <v-card-title
-                    class="title-styles pt-3"
-                    v-text="card.title"
-                  ></v-card-title>
-
-                  <v-card-subtitle
-                    class="subtitle-styles pt-1"
-                    v-text="card.subTitle"
-                  ></v-card-subtitle>
-
-                  <v-card-actions>
-                    <a
-                      :href="card.href"
-                      class="ml-2 mb-1 text-body2 link-styles"
-                      >{{ buttonText }}
-                      <v-icon small class="link-styles"
-                        >mdi-chevron-right</v-icon
-                      ></a
-                    >
-                  </v-card-actions>
+              <!-- Menggunakan v-img untuk gambar kartu -->
+              <v-img :src="card.image" height="180px" class="rounded-top"></v-img>
+              <v-card-text>
+                <div class="font-weight-bold text-body-1 mb-2">{{ card.title }}</div>
+                <div class="text-success font-weight-bold text-h6">{{ card.discountPrice }}</div>
+                <div class="text-decoration-line-through text-body-2 text--secondary mb-2">{{ card.originalPrice }}</div>
+                <div class="text-body-2 text--secondary">{{ card.restaurantName }}</div>
+                <div class="d-flex align-items-center mt-2">
+                  <v-rating :value="card.rating" dense readonly color="amber" class="mr-2"></v-rating>
+                  <div class="text-body-2">{{ card.rating }}/5</div>
                 </div>
-
-                <v-avatar class="ma-3" size="125" tile>
-                  <v-img :src="card.image"></v-img>
-                </v-avatar>
-              </div>
+              </v-card-text>
+              <v-card-actions>
+                <a :href="card.href" class="ml-2 mb-1 text-body2 link-styles">
+                  {{ buttonText }}
+                  <v-icon small class="link-styles">mdi-chevron-right</v-icon>
+                </a>
+              </v-card-actions>
             </v-card>
           </v-hover>
         </v-col>
@@ -81,7 +69,7 @@ export default {
       type: Array,
       required: true,
       default() {
-        return []
+        return [];
       },
     },
     buttonText: {
@@ -100,17 +88,24 @@ export default {
       default: '#f9fafd',
     },
   },
-}
+};
 </script>
 
 <style lang="scss" scoped>
-.section-technology {
+.section-food {
   min-height: 400px;
   background-position: center;
   background-size: cover;
   .v-card {
     transition: all 0.3s ease-in-out;
     box-shadow: 0px 15px 35px 0px rgba(112, 144, 176, 0.2);
+    .v-img {
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+    }
+    .text-decoration-line-through {
+      text-decoration: line-through;
+    }
     .title-styles {
       font-weight: 500 !important;
       color: #47536b;
